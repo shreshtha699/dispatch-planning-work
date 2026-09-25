@@ -1,63 +1,90 @@
-    const express = require('express');
+require('dotenv').config();
+
+const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { Pool } = require('pg');
 
 const app = express();
-const PORT = 3000;
-
-// Attachments is folder mein save honge
+const PORT = Number(process.env.PORT) || 3000;
 const uploadDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+fs.mkdirSync(uploadDir, { recursive: true });
+
+const pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    ssl: process.env.DATABASE_SSL === 'true' ? { rejectUnauthorized: false } : undefined
+});
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => cb(null, uploadDir),
     filename: (req, file, cb) => {
         const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
-        cb(null, Date.now() + '-' + safeName);
+        cb(null, `${Date.now()}-${safeName}`);
     }
 });
 
 const upload = multer({
     storage,
-    limits: { fileSize: 10 * 1024 * 1024, files: 10 } // 10 MB per file, max 10 files
+    limits: { fileSize: 10 * 1024 * 1024, files: 10 }
 });
 
-// Serve only public front-end files; keep uploads and saved submissions private.
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/index.html', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/warehouse.html', (req, res) => res.sendFile(path.join(__dirname, 'warehouse.html')));
 app.get('/style.css', (req, res) => res.sendFile(path.join(__dirname, 'style.css')));
 
-// Form submit
-app.post('/submit', upload.array('attachments', 10), (req, res) => {
-    const entry = {
-        id: Date.now(),
-        vendorName: req.body.vendorName,
-        location: req.body.location,
-        latitude: req.body.latitude || null,
-        longitude: req.body.longitude || null,
-        contact: req.body.contact,
-        itemName: req.body.itemName,
-        deadline: req.body.deadline,
-        feedback: req.body.feedback || '',
-        files: req.files.map(f => f.filename),
-        submittedAt: new Date().toISOString()
-    };
+app.post('/submit', upload.array('attachments', 10), async (req, res, next) => {
+    const { vendorName, location, latitude, longitude, contact, itemName, deadline, feedback } = req.body;
+    const files = req.files || [];
 
-    const dbFile = path.join(__dirname, 'data.json');
-    let data = [];
-    if (fs.existsSync(dbFile)) data = JSON.parse(fs.readFileSync(dbFile, 'utf8'));
-    data.push(entry);
-    fs.writeFileSync(dbFile, JSON.stringify(data, null, 2));
+    try {
+        const attachments = files.map(file => ({
+            originalName: file.originalname,
+            storedName: file.filename,
+            mimeType: file.mimetype,
+            size: file.size
+        }));
 
-    console.log('Naya entry:', entry);
-    res.json({ success: true });
+        const result = await pool.query(
+            `INSERT INTO dispatch_requests
+                (vendor_name, location, latitude, longitude, contact, item_name, deadline, feedback, attachments)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+             RETURNING id, submitted_at`,
+            [
+                vendorName,
+                location,
+                latitude ? Number(latitude) : null,
+                longitude ? Number(longitude) : null,
+                contact,
+                itemName,
+                deadline,
+                feedback || null,
+                JSON.stringify(attachments)
+            ]
+        );
+
+        res.status(201).json({ success: true, ...result.rows[0] });
+    } catch (error) {
+        await Promise.all(files.map(file => fs.promises.unlink(file.path).catch(() => {})));
+        next(error);
+    }
 });
 
-// Error handling (file bahut badi ho ya 10 se zyada files)
 app.use((err, req, res, next) => {
-    res.status(400).json({ success: false, message: err.message });
+    console.error('Request failed:', err.message);
+    const status = err instanceof multer.MulterError ? 400 : 500;
+    res.status(status).json({
+        success: false,
+        message: status === 400 ? err.message : 'Could not save the form. Check the server and database settings.'
+    });
 });
 
-app.listen(PORT, () => console.log(`Server chal raha hai: http://localhost:${PORT}`));
+pool.query('SELECT 1')
+    .then(() => {
+        app.listen(PORT, () => console.log(`Form server ready at http://localhost:${PORT}`));
+    })
+    .catch(error => {
+        console.error('Could not connect to PostgreSQL:', error.message);
+        process.exit(1);
+    });
