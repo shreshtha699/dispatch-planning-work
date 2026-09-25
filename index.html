@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Warehouse Form</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <form id="warehouseForm">
+        <h2>Warehouse Details</h2>
+
+        <label for="vendorName">Vendor Name</label>
+        <input type="text" id="vendorName" name="vendorName" placeholder="Vendor ka naam" required>
+
+        <label for="location">Location</label>
+        <input type="text" id="location" name="location" placeholder="City / Area" required>
+
+        <!-- Live Location -->
+        <button type="button" id="locBtn" class="secondary-btn">📍 Live Location</button>
+        <div id="locInfo" class="info"></div>
+        <input type="hidden" id="latitude" name="latitude">
+        <input type="hidden" id="longitude" name="longitude">
+
+        <label for="contact">Contact Number</label>
+        <input type="tel" id="contact" name="contact" placeholder="10 digit number"
+               pattern="[0-9]{10}" maxlength="10" required>
+<label for="itemName">Item Name</label>
+<input type="text" id="itemName" name="itemName" placeholder="Item ka naam" required>
+
+        <label for="deadline">Deadline Date</label>
+        <input type="date" id="deadline" name="deadline" required>
+        <label for="feedback">Feedback</label>
+<textarea id="feedback" name="feedback" rows="4" placeholder="Apna feedback likho..."></textarea>
+
+        <!-- Attachments -->
+        <label>Attachments</label>
+        <button type="button" id="fileBtn" class="secondary-btn">📎 File Add Karo</button>
+        <input type="file" id="fileInput" multiple hidden>
+        <ul id="fileList"></ul>
+
+        <button type="submit" id="submitBtn">Submit</button>
+        <div id="message"></div>
+    </form>
+
+    <script>
+        const form = document.getElementById('warehouseForm');
+        const locBtn = document.getElementById('locBtn');
+        const locInfo = document.getElementById('locInfo');
+        const fileBtn = document.getElementById('fileBtn');
+        const fileInput = document.getElementById('fileInput');
+        const fileList = document.getElementById('fileList');
+        const message = document.getElementById('message');
+        const submitBtn = document.getElementById('submitBtn');
+
+        let files = [];
+
+        // ---------- LIVE LOCATION ----------
+        locBtn.addEventListener('click', () => {
+            if (!navigator.geolocation) {
+                locInfo.textContent = 'Aapka browser location support nahi karta.';
+                return;
+            }
+            locInfo.textContent = 'Location le rahe hain...';
+
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    document.getElementById('latitude').value = lat;
+                    document.getElementById('longitude').value = lng;
+                    locInfo.innerHTML =
+                        `✅ Location mil gayi (${lat.toFixed(5)}, ${lng.toFixed(5)}) ` +
+                        `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank">Map par dekho</a>`;
+                },
+                (err) => {
+                    locInfo.textContent = err.code === 1
+                        ? '❌ Location permission deny ho gayi. Browser mein allow karo.'
+                        : '❌ Location nahi mil paayi, dobara try karo.';
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        });
+
+        // ---------- MULTIPLE ATTACHMENTS ----------
+        fileBtn.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', () => {
+            for (const f of fileInput.files) {
+                const duplicate = files.some(x => x.name === f.name && x.size === f.size);
+                if (!duplicate) files.push(f);
+            }
+            fileInput.value = '';
+            renderFiles();
+        });
+
+        function renderFiles() {
+            fileList.innerHTML = '';
+            files.forEach((f, i) => {
+                const li = document.createElement('li');
+                const span = document.createElement('span');
+                span.textContent = `${f.name} (${(f.size / 1024).toFixed(1)} KB)`;
+                li.appendChild(span);
+                const rm = document.createElement('button');
+                rm.type = 'button';
+                rm.className = 'remove';
+                rm.textContent = '✕';
+                rm.onclick = () => { files.splice(i, 1); renderFiles(); };
+                li.appendChild(rm);
+                fileList.appendChild(li);
+            });
+        }
+
+        // ---------- SUBMIT ----------
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Submitting...';
+            message.className = '';
+            message.textContent = '';
+
+            try {
+                if (location.hostname.endsWith('github.io')) {
+                    // GitHub Pages is static: keep a local preview record only.
+                    const entries = JSON.parse(localStorage.getItem('warehousePreviewEntries') || '[]');
+                    entries.push({
+                        vendorName: form.elements.vendorName.value,
+                        location: form.elements.location.value,
+                        latitude: form.elements.latitude.value,
+                        longitude: form.elements.longitude.value,
+                        contact: form.elements.contact.value,
+                        itemName: form.elements.itemName.value,
+                        deadline: form.elements.deadline.value,
+                        feedback: form.elements.feedback.value,
+                        attachmentNames: files.map(file => file.name),
+                        submittedAt: new Date().toISOString()
+                    });
+                    localStorage.setItem('warehousePreviewEntries', JSON.stringify(entries));
+                    message.className = 'success';
+                    message.textContent = 'Preview saved in this browser only. No files or data were sent to a server.';
+                } else {
+                    const fd = new FormData(form);
+                    files.forEach(file => fd.append('attachments', file));
+                    const res = await fetch('/submit', { method: 'POST', body: fd });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) throw new Error(data.message || 'Submission failed.');
+                    message.className = 'success';
+                    message.textContent = 'Form submitted successfully.';
+                }
+
+                form.reset();
+                files = [];
+                renderFiles();
+            } catch (err) {
+                message.className = 'error';
+                message.textContent = err.message || 'Could not submit. Please try again.';
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.textContent = 'Submit';
+            }
+        });
+    </script>
+</body>
+</html>
