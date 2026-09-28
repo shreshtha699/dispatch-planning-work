@@ -8,6 +8,10 @@
 </head>
 <body>
     <form id="warehouseForm">
+        <header class="form-header">
+            <img src="Deepak- Logo.png" alt="Deepak Brand logo">
+            <h1>Special Work Request Form</h1>
+        </header>
         <h2>Warehouse Details</h2>
 
         <label for="vendorName">Vendor Name</label>
@@ -16,8 +20,8 @@
         <label for="location">Location</label>
         <input type="text" id="location" name="location" placeholder="City / Area" required>
 
-        <!-- Live Location -->
-        <button type="button" id="locBtn" class="secondary-btn">📍 Live Location</button>
+        <!-- Search the entered location on Google Maps -->
+        <button type="button" id="locBtn" class="secondary-btn">📍 Add Location</button>
         <div id="locInfo" class="info"></div>
         <input type="hidden" id="latitude" name="latitude">
         <input type="hidden" id="longitude" name="longitude">
@@ -55,31 +59,18 @@
 
         let files = [];
 
-        // ---------- LIVE LOCATION ----------
+        // ---------- GOOGLE MAPS LOCATION SEARCH ----------
         locBtn.addEventListener('click', () => {
-            if (!navigator.geolocation) {
-                locInfo.textContent = 'Aapka browser location support nahi karta.';
+            const locationInput = document.getElementById('location');
+            const query = locationInput.value.trim();
+            if (!query) {
+                locInfo.textContent = 'Pehle Location field mein area ya address type karein.';
+                locationInput.focus();
                 return;
             }
-            locInfo.textContent = 'Location le rahe hain...';
-
-            navigator.geolocation.getCurrentPosition(
-                (pos) => {
-                    const lat = pos.coords.latitude;
-                    const lng = pos.coords.longitude;
-                    document.getElementById('latitude').value = lat;
-                    document.getElementById('longitude').value = lng;
-                    locInfo.innerHTML =
-                        `✅ Location mil gayi (${lat.toFixed(5)}, ${lng.toFixed(5)}) ` +
-                        `<a href="https://www.google.com/maps?q=${lat},${lng}" target="_blank">Map par dekho</a>`;
-                },
-                (err) => {
-                    locInfo.textContent = err.code === 1
-                        ? '❌ Location permission deny ho gayi. Browser mein allow karo.'
-                        : '❌ Location nahi mil paayi, dobara try karo.';
-                },
-                { enableHighAccuracy: true, timeout: 10000 }
-            );
+            const mapsUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+            window.open(mapsUrl, '_blank', 'noopener,noreferrer');
+            locInfo.textContent = 'Google Maps mein location search khol di hai.';
         });
 
         // ---------- MULTIPLE ATTACHMENTS ----------

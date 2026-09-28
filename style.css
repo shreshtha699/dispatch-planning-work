@@ -24,6 +24,24 @@ form {
     animation: slideUp 0.6s ease;
 }
 
+.form-header {
+    text-align: center;
+    margin-bottom: 22px;
+}
+
+.form-header img {
+    display: block;
+    width: 120px;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto 8px;
+}
+
+.form-header h1 {
+    color: #333;
+    font-size: 24px;
+}
+
 @keyframes slideUp {
     from {
         opacity: 0;
